@@ -1,6 +1,6 @@
 use crate::constants::{INTERMEC_VID, SG20_PID};
-use rusb::LogLevel;
 use rusb::{Context, Device, UsbContext};
+use rusb::{LogLevel, TransferType};
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -42,17 +42,10 @@ fn main() -> rusb::Result<()> {
         std::env::set_var("RUST_LOG", "info");
     }
 
-    // A builder for `FmtSubscriber`:
-    let subscriber = FmtSubscriber::builder()
-        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
-        // will be written to stdout.
-        .with_max_level(Level::TRACE)
-        // completes the builder.
-        .finish();
-
-    // Will be used as a fallback if no thread-local subscriber
-    // has been set in a thread (using with_default):
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    FmtSubscriber::builder()
+        //.compact()
+        //.json()
+        .init();
 
     rusb::set_log_level(LogLevel::Info);
 
@@ -80,9 +73,26 @@ fn main() -> rusb::Result<()> {
                 None => {
                     error!("Failed to open device.");
                 }
-                Some(d) => {
-                    let speed = d.device.speed();
-                    info!("Successfully opened device: {:?}, Device Speed = {}", d, device::usb::speed_as_str(&speed));
+                Some(dev) => {
+                    let speed = dev.device.speed();
+
+                    info!(
+                        "Successfully opened device: {:?}, Device Speed = {}",
+                        dev,
+                        device::usb::speed_as_str(&speed)
+                    );
+
+                    let endpoint_result =
+                        device::usb::find_readable_endpoint(dev, TransferType::Interrupt);
+
+                    match endpoint_result {
+                        None => {
+                            error!("Didn't find any readable Interrupt endpoints!");
+                        }
+                        Some(ep) => {
+                            info!("Found readable Interrupt endpoint: {:?}", ep);
+                        }
+                    }
                 }
             }
         }
