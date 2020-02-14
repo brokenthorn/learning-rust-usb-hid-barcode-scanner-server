@@ -123,8 +123,8 @@ fn main() {
 
                 loop {
                     info!(
-                        "Trying to connect to device VID={:#04X?}, PID={:#04X?} (Intermec SG20)...",
-                        vid, pid
+                        "Trying to connect to device VID={:#04X?}, PID={:#04X?}, SN={} (Intermec SG20)...",
+                        vid, pid, serial_no
                     );
                     let _res = hidapi.refresh_devices();
                     let device_res = hidapi.open_serial(vid, pid, serial_no);
@@ -132,7 +132,7 @@ fn main() {
                     match device_res {
                         Ok(device) => {
                             info!(
-                                "Connected to device VID={:04X?}, PID={:04X?}, SN={:04X?}",
+                                "Connected to device VID={:04X?}, PID={:04X?}, SN={}",
                                 vid, pid, serial_no
                             );
 
@@ -158,69 +158,68 @@ fn main() {
                                         let terminator = {
                                             let mut t = [0u8; 3];
                                             t.copy_from_slice(
-                                                /// return last 3 bytes:
                                                 &bytes[(bytes_read_size - 3)..bytes_read_size],
                                             );
                                             t
                                         };
-                                        debug!("Terminator bytes seem to be: {:02X?}", terminator);
+                                        debug!("Terminator: {:02X?}", terminator);
 
                                         let symbology = {
                                             let mut s = [0u8; 3];
-                                            s.copy_from_slice(
-                                                /// return first 3 bytes:
-                                                &bytes[2..=4],
-                                            );
+                                            s.copy_from_slice(&bytes[2..=4]);
                                             s
                                         };
                                         debug!(
-                                            "Symbology bytes {:02X?} matches {:?} symbology. To ASCII={:?}",
+                                            "Symbology {:02X?}={:?} is {:?}.",
                                             symbology,
+                                            String::from_utf8_lossy(&symbology),
                                             decode_aim_symbology(&symbology),
-                                            String::from_utf8_lossy(&symbology)
                                         );
 
                                         match terminator {
                                             [0, 40, 1] => {
-                                                info!("READING NEXT BYTES...");
                                                 count_bytes_read_from_current_report +=
                                                     *&bytes[..bytes_read_size].len();
-                                                info!(
-                                                    "Count={}",
+                                                debug!(
+                                                    "{} bytes read so far.",
                                                     count_bytes_read_from_current_report
                                                 );
                                             }
                                             [0, 40, 0] => {
-                                                info!("REPORT FINISHED. RECEIVED ALL BYTES.");
+                                                info!("Finished reading HID report.");
                                                 info!(
-                                                    "Count={}",
+                                                    "{} bytes read in total.",
                                                     count_bytes_read_from_current_report
                                                 );
                                                 count_bytes_read_from_current_report = 0;
                                             }
                                             [0, 1, 0] => {
-                                                info!("REPORT FINISHED. RECEIVED ALL BYTES.");
+                                                info!("Finished reading HID report.");
                                                 count_bytes_read_from_current_report +=
                                                     *&bytes[..bytes_read_size].len();
                                                 info!(
-                                                    "Count={}",
+                                                    "{} bytes read in total.",
                                                     count_bytes_read_from_current_report
                                                 );
                                                 count_bytes_read_from_current_report = 0;
                                             }
                                             other => {
-                                                info!("Unknown termination bytes: {:?}", other);
+                                                info!(
+                                                    "Unknown termination bytes: {:?}={:02X?}",
+                                                    other, other
+                                                );
                                                 count_bytes_read_from_current_report +=
                                                     *&bytes[..bytes_read_size].len();
                                                 info!(
-                                                    "Count={}",
+                                                    "{} bytes read (from unknown report size).",
                                                     count_bytes_read_from_current_report
                                                 );
                                             }
                                         }
                                     }
                                     Err(e) => {
-                                        info!("Read error: {:?}. Disconnecting.", e);
+                                        info!("Error reading data from device: {:?}. Disconnecting and connecting back in 3 seconds.", e);
+                                        std::thread::sleep(std::time::Duration::from_secs(3));
                                         break;
                                     }
                                 }
