@@ -1,20 +1,6 @@
 use crate::constants::{INTERMEC_VID, SG20_PID};
-use rusb::{Context, Device, UsbContext};
-use rusb::{LogLevel, TransferType};
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
-
-struct HotPlugHandler;
-
-impl<T: UsbContext> rusb::Hotplug<T> for HotPlugHandler {
-    fn device_arrived(&mut self, device: Device<T>) {
-        info!("Device connected: {:?}", device);
-    }
-
-    fn device_left(&mut self, device: Device<T>) {
-        info!("Device disconnected: {:?}", device);
-    }
-}
 
 // USB HID POS: (in Honeywell user guides referenced as USB HID / USB HID Bar Code Scanner)
 //
@@ -29,14 +15,11 @@ impl<T: UsbContext> rusb::Hotplug<T> for HotPlugHandler {
 //
 
 pub mod constants;
-pub mod device;
-pub mod server;
-
-use crate::device::usb::UsbDeviceHandle;
-use device::*;
+//pub mod device;
+//pub mod server;
 
 #[tracing::instrument]
-fn main() -> rusb::Result<()> {
+fn main() {
     // Set default logging level(s):
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var("RUST_LOG", "info");
@@ -47,124 +30,26 @@ fn main() -> rusb::Result<()> {
         //.json()
         .init();
 
-    rusb::set_log_level(LogLevel::Info);
-
     info!("Starting up.");
 
-    //    info!("Listing devices.");
-    //    list_devices().unwrap();
+    let hid = hid::init().unwrap();
 
-    //    match Context::new() {
-    //        Ok(mut context) => match open_device(&mut context, INTERMEC_VID, SG20_PID) {
-    //            Some((mut device, device_desc, mut handle)) => {
-    //                read_device(&mut device, &device_desc, &mut handle).unwrap()
-    //            }
-    //            None => println!(
-    //                "could not find device {:04x}:{:04x}",
-    //                INTERMEC_VID, SG20_PID
-    //            ),
-    //        },
-    //        Err(e) => panic!("could not initialize libusb: {}", e),
-    //    }
+    for device in hid.devices() {
+        print!("{} ", device.path().to_str().unwrap());
+        print!("ID {:x}:{:x} ", device.vendor_id(), device.product_id());
 
-    match Context::new() {
-        Ok(mut context) => {
-            match device::usb::open_usb_device(&mut context, INTERMEC_VID, SG20_PID) {
-                None => {
-                    error!("Failed to open device.");
-                }
-                Some(dev) => {
-                    let speed = dev.device.speed();
-
-                    info!(
-                        "Successfully opened device: {:?}, Device Speed = {}",
-                        dev,
-                        device::usb::speed_as_str(&speed)
-                    );
-
-                    let endpoint_result =
-                        device::usb::find_readable_endpoint(dev, TransferType::Interrupt);
-
-                    match endpoint_result {
-                        None => {
-                            error!("Didn't find any readable Interrupt endpoints!");
-                        }
-                        Some(ep) => {
-                            info!("Found readable Interrupt endpoint: {:?}", ep);
-                        }
-                    }
-                }
-            }
+        if let Some(name) = device.manufacturer_string() {
+            print!("{} ", name);
         }
-        Err(e) => panic!("Could not initialize libusb: {}", e),
+
+        if let Some(name) = device.product_string() {
+            print!("{} ", name);
+        }
+
+        if let Some(name) = device.serial_number() {
+            print!("{} ", name);
+        }
+
+        println!();
     }
-
-    Ok(())
-
-    //    if rusb::has_hotplug() {
-    //        let context = Context::new()?;
-    //        context.register_callback(None, None, None, Box::new(HotPlugHandler {}))?;
-    //
-    //        loop {
-    //            context.handle_events(None).unwrap();
-    //        }
-    //    } else {
-    //        eprint!("libusb hotplug api unsupported");
-    //        Ok(())
-    //    }
-
-    //    info!("Has hotplug capability: {}", rusb::has_hotplug());
-    //
-    //    for device in rusb::devices().unwrap().iter() {
-    //        let device_desc = device.device_descriptor().unwrap();
-    //
-    //        let (vendor_id, product_id) = (device_desc.vendor_id(), device_desc.product_id());
-    //        let (bus_number, address, port) =
-    //            (device.bus_number(), device.address(), device.port_number());
-    //
-    //        if vendor_id == 0x067e {
-    //            info!(
-    //                "Found an Intermec device: [VEN: {:04x} ({: >5}), PID: {:04x} ({: >5}) at Bus: {}, Address: {}, Port: {}].",
-    //                vendor_id, vendor_id, product_id, product_id, bus_number, address, port
-    //            );
-    //
-    //            let d_handle_result = device.open();
-    //
-    //            if let Ok(handle) = d_handle_result {
-    //                info!("Successfully opened device: [{:?}]", device);
-    //
-    //                let supported_languages = handle.read_languages(Duration::from_secs(10)).unwrap();
-    //                info!("Supported languages: {:?}", supported_languages);
-    //
-    //                let device_descriptor = handle.device().device_descriptor().unwrap();
-    //
-    //                let manufacturer_string = handle.read_manufacturer_string(
-    //                    supported_languages.first().unwrap().clone(),
-    //                    &device_descriptor,
-    //                    Duration::from_secs(10),
-    //                );
-    //
-    //                let product_string = handle.read_product_string(
-    //                    supported_languages.first().unwrap().clone(),
-    //                    &device_descriptor,
-    //                    Duration::from_secs(10),
-    //                );
-    //
-    //                info!(
-    //                    "Device: [{}, {}]",
-    //                    manufacturer_string.unwrap(),
-    //                    product_string.unwrap()
-    //                );
-    //
-    //                handle.
-    //            } else {
-    //                warn!("Failed to open device.");
-    //            }
-    //        } else {
-    //            info!(
-    //                "Skipping non-Intermec device: [VEN: {:04x} ({: >5}), PID: {:04x} ({: >5}) at Bus: {}, Address: {}, Port: {}].",
-    //                vendor_id, vendor_id, product_id, product_id, bus_number, address, port
-    //            );
-    //        }
-    //    }
 }
