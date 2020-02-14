@@ -1,5 +1,9 @@
 /// Intermec's Vendor ID.
-pub const INTERMEC_VID: u16 = 0x067e;
+pub static INTERMEC_VID: u16 = 0x067e;
 
 /// Intermec SG20 Device Product ID.
-pub const SG20_PID: u16 = 0x0809;
+pub static SG20_PID: u16 = 0x0809;
+
+counted_array!(
+pub static SUPPORTED_VIDS: [u16; _] = [INTERMEC_VID]
+);
