@@ -54,20 +54,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "hid"
-version = "0.4.1"
+name = "hidapi"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "526208586d017ea587be6f1c65f6d5491a60d15a6667da110ad2520662a265cb"
-dependencies = [
- "hidapi-sys",
- "libc",
-]
-
-[[package]]
-name = "hidapi-sys"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd8a9410aec7ca9f4571ff40c7b1813a28503c2a664a028921fc973073dcd4bf"
+checksum = "289d0fb85e9ea18785708d4d735eca4f480b533b005e6f8aa2ffba0207800c75"
 dependencies = [
  "cc",
  "libc",
@@ -221,7 +211,7 @@ dependencies = [
 name = "server_usb"
 version = "0.1.0"
 dependencies = [
- "hid",
+ "hidapi",
  "tracing",
  "tracing-subscriber",
 ]
