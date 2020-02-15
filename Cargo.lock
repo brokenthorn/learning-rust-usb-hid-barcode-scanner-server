@@ -101,6 +101,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive_more"
+version = "0.99.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2159be042979966de68315bce7034bb000c775f22e3e834e1c52ff78f041cae8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "flate2"
 version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -287,6 +298,7 @@ version = "0.1.0"
 dependencies = [
  "base-encode",
  "counted-array",
+ "derive_more",
  "hidapi",
  "tracing",
  "tracing-subscriber",
