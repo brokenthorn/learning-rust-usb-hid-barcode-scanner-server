@@ -1,125 +1,140 @@
-use hidapi::HidApi;
+use std::thread::sleep;
+use std::time::Duration;
+
+use hidapi::{HidApi, HidResult};
 use tracing::{debug, info};
 
-use crate::decoder::decode_aim_symbology;
-use crate::devices::SDevice;
-use crate::tools::get_full_device_name;
+use crate::devices::UsbDeviceIdentifier;
+use crate::tools::{get_product_name, refresh_devices};
 
-#[tracing::instrument(skip(hidapi))]
-pub fn connect_to_device(s_device: SDevice, hidapi: &mut HidApi) {
-    let (vid, pid, sn) = (s_device.vid, s_device.pid, s_device.sn);
+static JAVA_ZIP_HEADER: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
+static BZIP2_HEADER: [u8; 10] = [0x42, 0x5A, 0x68, 0x39, 0x31, 0x41, 0x59, 0x26, 0x53, 0x59];
 
-    loop {
-        info!("Trying to connect to {:?}", s_device);
+/// Initializes the hidapi.
+/// Will also initialize the currently available device list.
+#[tracing::instrument]
+pub fn initialize_hidapi() -> HidResult<HidApi> {
+    debug!("Initializing the hidapi.");
+    hidapi::HidApi::new()
+}
 
-        let _res = hidapi.refresh_devices();
-        let device_res = hidapi.open_serial(vid, pid, sn);
+#[derive(Debug)]
+pub struct UsbHidPosDeviceServer<'a> {
+    device_identifier: UsbDeviceIdentifier<'a>,
+}
 
-        match device_res {
-            Ok(device) => {
-                let full_device_name = get_full_device_name(&device);
-                info!("Connected to {:?}: {}", s_device, full_device_name);
+impl<'a> UsbHidPosDeviceServer<'a> {
+    #[tracing::instrument()]
+    pub fn new(device_identifier: UsbDeviceIdentifier<'a>) -> Self {
+        info!(
+            "Creating new USB HID POS Device Server for device: {}",
+            device_identifier
+        );
 
-                // Read data from device
-                const BUFFER_SIZE: usize = 64 * 4; // TODO: Replace buffer size with max packet size from HID descriptor.
-                info!("Read buffer size is {} bytes.", BUFFER_SIZE);
+        UsbHidPosDeviceServer { device_identifier }
+    }
 
-                // buffer for reading bytes from the HID device:
-                let mut buf = [0u8; BUFFER_SIZE];
-                // the number of bytes read so far from the current HID report:
-                let mut count_bytes_read_from_current_report: usize = 0;
+    #[tracing::instrument()]
+    pub fn start(&self, timeout: Duration) {
+        info!("Starting server.");
 
-                loop {
-                    info!("Waiting for device to send data...");
-                    let read_result = device.read(&mut buf[..]);
+        loop {
+            let hidapi_init_result = initialize_hidapi();
 
-                    match read_result {
-                        Ok(bytes_read_size) => {
-                            // the bytes that were read:
-                            let bytes = &buf[..bytes_read_size];
-                            debug!("Received (HEX): {:02X?}", &bytes);
+            match hidapi_init_result {
+                Ok(mut hidapi) => loop {
+                    let present_devices = refresh_devices(&mut hidapi);
 
-                            let terminator = {
-                                let mut t = [0u8; 3];
-                                t.copy_from_slice(&bytes[(bytes_read_size - 3)..bytes_read_size]);
-                                t
-                            };
-                            debug!("Terminator: {:02X?}", terminator);
+                    if present_devices.contains(&self.device_identifier) {
+                        info!("Device is present: {}", self.device_identifier);
 
-                            let symbology = {
-                                let mut s = [0u8; 3];
-                                s.copy_from_slice(&bytes[2..=4]);
-                                s
-                            };
-                            debug!(
-                                "Symbology {:02X?}={:?} is {:?}.",
-                                symbology,
-                                String::from_utf8_lossy(&symbology),
-                                decode_aim_symbology(&symbology),
-                            );
-
-                            match terminator {
-                                [0, 40, 1] => {
-                                    count_bytes_read_from_current_report +=
-                                        *&bytes[..bytes_read_size].len();
-                                    debug!(
-                                        "{} bytes read so far.",
-                                        count_bytes_read_from_current_report
-                                    );
-                                }
-                                [0, 40, 0] => {
-                                    info!("Finished reading HID report.");
-                                    info!(
-                                        "{} bytes read in total.",
-                                        count_bytes_read_from_current_report
-                                    );
-                                    count_bytes_read_from_current_report = 0;
-                                }
-                                [0, 1, 0] => {
-                                    info!("Finished reading HID report.");
-                                    count_bytes_read_from_current_report +=
-                                        *&bytes[..bytes_read_size].len();
-                                    info!(
-                                        "{} bytes read in total.",
-                                        count_bytes_read_from_current_report
-                                    );
-                                    count_bytes_read_from_current_report = 0;
-                                }
-                                other => {
-                                    info!("Unknown termination bytes: {:?}={:02X?}", other, other);
-                                    count_bytes_read_from_current_report +=
-                                        *&bytes[..bytes_read_size].len();
-                                    info!(
-                                        "{} bytes read (from unknown report size).",
-                                        count_bytes_read_from_current_report
-                                    );
+                        let device_response = {
+                            match self.device_identifier {
+                                UsbDeviceIdentifier::VidPid { vid, pid } => hidapi.open(vid, pid),
+                                UsbDeviceIdentifier::VidPidSn { vid, pid, sn } => {
+                                    hidapi.open_serial(vid, pid, sn)
                                 }
                             }
-                        }
-                        Err(e) => {
-                            info!("Error reading data from device: {:?}. Disconnecting and connecting back in 3 seconds.", e);
-                            std::thread::sleep(std::time::Duration::from_secs(3));
-                            break;
-                        }
-                    }
-                }
+                        };
 
-                // Write data to device
-                //            let buf = [0u8, 1, 2, 3, 4];
-                //            let hid_res = device.write(&buf);
-                //            match hid_res {
-                //                Ok(res) => {
-                //                    info!("Wrote: {:?} byte(s)", res);
-                //                }
-                //                Err(e) => {
-                //                    info!("Write error: {:?}", e);
-                //                }
-                //            }
+                        match device_response {
+                            Ok(device) => {
+                                info!("Connected to {}", self.device_identifier);
+
+                                let product_name = get_product_name(&device);
+
+                                info!("Device name: {}.", product_name);
+
+                                const BUFFER_SIZE: usize = 64 * 4;
+                                let mut buf = [0u8; BUFFER_SIZE];
+                                let mut _data_buf: Vec<u8>;
+
+                                info!("Entering read loop.");
+
+                                let mut num_read_errors = 0;
+
+                                loop {
+                                    info!("Waiting for read...");
+
+                                    let read_result = device.read(&mut buf);
+
+                                    match read_result {
+                                        Ok(read_len) => {
+                                            num_read_errors = 0;
+
+                                            let bytes = &buf[..read_len];
+                                            let _symbology_bytes = {
+                                                let mut sym = [0u8; 3];
+                                                sym.copy_from_slice(&bytes[2..=4]);
+                                                sym
+                                            };
+                                            let _terminator_bytes = {
+                                                let mut term = [0u8; 3];
+                                                term.copy_from_slice(&bytes[(read_len - 3)..]);
+                                                term
+                                            };
+
+                                            debug!(
+                                                "Received {} bytes: {:02x?}",
+                                                bytes.len(),
+                                                bytes
+                                            );
+                                        }
+                                        Err(e) => {
+                                            info!("Error reading data: {:?}", e);
+
+                                            num_read_errors += 1;
+
+                                            if num_read_errors >= 3 {
+                                                debug!("Failed to read from device 3 times in a row. Closing this device handle.");
+                                                break;
+                                            } else {
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                info!("Error connecting to device: {:?}", e);
+                            }
+                        }
+                    } else {
+                        info!("Device {} not connected.", self.device_identifier);
+                    }
+
+                    info!("Retrying in {:?}.", timeout);
+                    sleep(timeout);
+                },
+                Err(e) => {
+                    info!("Failed to initialize hidapi: {:?}.", e);
+                }
             }
-            Err(e) => {
-                info!("Device open error: {:?}. Reconnecting in 5 seconds.", e);
-                std::thread::sleep(std::time::Duration::from_secs(5));
-            }
+
+            info!("Retrying in {:?}.", timeout);
+            sleep(timeout);
+
+            continue;
         }
     }
 }

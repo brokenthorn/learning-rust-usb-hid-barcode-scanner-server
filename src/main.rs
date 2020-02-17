@@ -1,16 +1,8 @@
-#[macro_use]
-extern crate counted_array;
-extern crate derive_more;
-
-use std::thread::sleep;
 use std::time::Duration;
 
-use hidapi::{HidApi, HidResult};
-use tracing::{debug, info};
-
-use crate::constants::INTERMEC_SG20;
-use crate::server::connect_to_device;
-use crate::tools::find_supported_devices;
+use crate::constants::{PID_SG20, VID_INTERMEC};
+use crate::devices::UsbDeviceIdentifier;
+use crate::server::UsbHidPosDeviceServer;
 
 // USB HID POS: (in Honeywell user guides referenced as USB HID / USB HID Bar Code Scanner)
 //
@@ -39,37 +31,17 @@ pub mod devices;
 pub mod server;
 pub mod tools;
 
-/// Initializes the hidapi.
-/// Will also initialize the currently available device list.
-#[tracing::instrument]
-pub fn initialize_hidapi() -> HidResult<HidApi> {
-    debug!("Initializing the hidapi.");
-    hidapi::HidApi::new()
-}
-
 #[tracing::instrument]
 fn main() {
     tools::initialize_logging(false);
-    info!("Starting Server USB.");
 
-    loop {
-        let hidapi_init_result = initialize_hidapi();
+    let device_id = UsbDeviceIdentifier::VidPidSn {
+        vid: VID_INTERMEC,
+        pid: PID_SG20,
+        sn: "3203-11211268246",
+    };
 
-        match hidapi_init_result {
-            Ok(mut hidapi) => {
-                let _supported_devices = find_supported_devices(&mut hidapi);
+    let server = UsbHidPosDeviceServer::new(device_id);
 
-                connect_to_device(INTERMEC_SG20, &mut hidapi);
-            }
-            Err(e) => {
-                info!(
-                    "Failed to initialize hidapi: {:?}. Retrying in 5 seconds...",
-                    e
-                );
-
-                sleep(Duration::from_secs(5));
-                continue;
-            }
-        }
-    }
+    server.start(Duration::from_secs(5));
 }

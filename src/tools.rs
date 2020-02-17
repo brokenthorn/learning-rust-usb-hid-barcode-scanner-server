@@ -1,9 +1,8 @@
 use hidapi::{HidApi, HidDevice};
-use tracing::{info, Level};
+use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use crate::constants::SUPPORTED_DEVICES;
-use crate::devices::SDevice;
+use crate::devices::UsbDeviceIdentifier;
 
 /// Initializes the global logging facility.
 ///
@@ -29,33 +28,47 @@ pub fn initialize_logging(json_output: bool) {
     }
 }
 
-/// Check if any of the connected devices are ones that we support.
+/// Refreshes hidapi's internal list of attached devices and returns that list.
 #[tracing::instrument(skip(hidapi))]
-pub fn find_supported_devices(hidapi: &mut HidApi) -> Vec<SDevice> {
-    info!("Refreshing devices list and searching for supported devices...");
+pub fn refresh_devices(hidapi: &mut HidApi) -> Vec<UsbDeviceIdentifier> {
+    info!("Refreshing devices list.");
+
     let _r = hidapi.refresh_devices();
-    let mut supported_devices = vec![];
+    let mut connected_devices = vec![];
+
     for device in hidapi.devices() {
-        let s_device: SDevice = SDevice {
-            vid: device.vendor_id,
-            pid: device.product_id,
-            sn: device.serial_number.as_ref().map_or("", |sn| sn.as_str()),
-        };
-        if SUPPORTED_DEVICES.contains(&s_device) {
-            supported_devices.push(s_device);
+        if device.serial_number.is_none() {
+            let device_id = UsbDeviceIdentifier::VidPid {
+                vid: device.vendor_id,
+                pid: device.product_id,
+            };
+
+            debug!("Found a device: {}", device_id);
+
+            connected_devices.push(device_id);
+        } else {
+            let device_id = UsbDeviceIdentifier::VidPidSn {
+                vid: device.vendor_id,
+                pid: device.product_id,
+                sn: device.serial_number.as_deref().unwrap_or(""),
+            };
+
+            debug!("Found a device: {}", device_id);
+
+            connected_devices.push(device_id);
         }
     }
-    info!("Connected supported devices: {:?}", supported_devices);
-    supported_devices
+
+    connected_devices
 }
 
 /// Get a formatted string composed of manufacturer string and product string.
-pub fn get_full_device_name(device: &HidDevice) -> String {
+pub fn get_product_name(device: &HidDevice) -> String {
     format!(
         "{} {}",
         match device.get_manufacturer_string() {
             Ok(m) => {
-                m.unwrap_or("NA".to_string())
+                m.unwrap_or_else(|| "NA".into())
             }
             Err(e) => {
                 format!("{:?}", e)
@@ -63,7 +76,7 @@ pub fn get_full_device_name(device: &HidDevice) -> String {
         },
         match device.get_product_string() {
             Ok(m) => {
-                m.unwrap_or("NA".to_string())
+                m.unwrap_or_else(|| "NA".into())
             }
             Err(e) => {
                 format!("{:?}", e)

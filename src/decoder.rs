@@ -1,3 +1,4 @@
+use base_encode::decode;
 use derive_more::Display;
 
 /// Supported barcode symbologies in AIM format.
@@ -61,4 +62,25 @@ pub fn decode_aim_symbology(identifier: &[u8]) -> AimSymbology {
         [0x5d, 0x45, 0x30] => AimSymbology::DataBar,
         _ => AimSymbology::Unknown,
     }
+}
+
+pub fn decode_base256(buf: &[u8]) -> Option<Vec<u8>> {
+    decode(buf, 255)
+}
+
+pub fn unzip_bytes(buf: &[u8]) -> zip::result::ZipResult<()> {
+    use std::io::prelude::*;
+
+    let reader = std::io::Cursor::new(buf);
+
+    let mut zip = zip::ZipArchive::new(reader)?;
+
+    for i in 0..zip.len() {
+        let file = zip.by_index(i).unwrap();
+        println!("Filename: {}", file.name());
+        let first_byte = file.bytes().next().unwrap()?;
+        println!("{}", first_byte);
+    }
+
+    Ok(())
 }

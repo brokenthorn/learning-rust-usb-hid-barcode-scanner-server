@@ -86,12 +86,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "counted-array"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "384f8c53175c890920b6e0127b730709d2a173ca6c4dfdc81618ac9b46f648fe"
-
-[[package]]
 name = "crc32fast"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -297,7 +291,6 @@ name = "server_usb"
 version = "0.1.0"
 dependencies = [
  "base-encode",
- "counted-array",
  "derive_more",
  "hidapi",
  "tracing",

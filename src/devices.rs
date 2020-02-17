@@ -1,22 +1,25 @@
-use std::fmt::{Debug, Error, Formatter};
+use std::fmt::Debug;
 
-/// A USB-HID device that ServerUSB supports.
-#[derive(Eq, PartialEq, Copy, Clone)]
-pub struct SDevice<'a> {
-    /// Vendor ID.
-    pub vid: u16,
-    /// Product ID.
-    pub pid: u16,
-    /// Device Serial Number.
-    pub sn: &'a str,
-}
+use derive_more::Display;
 
-impl<'a> Debug for SDevice<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(
-            f,
-            "SDevice {{ vid: {:04X?}, pid: {:04X?}, sn: \"{}\" }}",
-            self.vid, self.pid, self.sn
-        )
-    }
+/// Identifier for USB devices supported by this application.
+#[derive(Debug, Display, Eq, PartialEq, Clone, Copy)]
+pub enum UsbDeviceIdentifier<'a> {
+    /// A device matching a vendor ID (vid) and a product ID (pid).
+    #[display(
+        fmt = "VidPid {{ vid: {:04x?}, pid: {:04x?} }}",
+        vid,
+        pid
+    )]
+    VidPid { vid: u16, pid: u16 },
+
+    /// A device matching a vendor ID (vid), a product ID (pid) and a (usually) unique product
+    /// serial number (sn).
+    #[display(
+        fmt = "VidPidSn {{ vid: {:04x?}, pid: {:04x?}, sn: {} }}",
+        vid,
+        pid,
+        sn
+    )]
+    VidPidSn { vid: u16, pid: u16, sn: &'a str },
 }
