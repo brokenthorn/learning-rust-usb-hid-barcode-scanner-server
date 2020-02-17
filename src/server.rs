@@ -101,9 +101,14 @@ impl<'a> UsbHidPosDeviceServer<'a> {
                                             );
                                         }
                                         Err(e) => {
-                                            info!("Error reading data: {:?}", e);
+                                            info!(
+                                                "Error reading data: {:?}. Sleeping for {:?} before next read attempt.",
+                                                e, timeout
+                                            );
 
                                             num_read_errors += 1;
+
+                                            sleep(timeout);
 
                                             if num_read_errors >= 3 {
                                                 debug!("Failed to read from device 3 times in a row. Closing this device handle.");
